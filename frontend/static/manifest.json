@@ -1,0 +1,15 @@
+{
+  "name": "Swasya AI — Patient Case-Taking & Clinical OS",
+  "short_name": "Swasya AI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a2618",
+  "theme_color": "#2e7d32",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232e7d32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
