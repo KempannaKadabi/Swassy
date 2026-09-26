@@ -13,7 +13,7 @@ HOST = os.getenv("HOST", "0.0.0.0")
 SECRET_KEY = os.getenv("SECRET_KEY", "swasya-ai-secure-secret-key")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
-MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/swasya_ai')
+MONGODB_URI = os.getenv('MONGODB_URI') or os.getenv('MONGO_URL') or 'mongodb://localhost:27017/swasya_ai'
 MONGODB_DB_NAME = os.getenv('MONGODB_DB_NAME', 'swasya_ai')
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", str(BASE_DIR / "backend" / "data" / "uploads"))
