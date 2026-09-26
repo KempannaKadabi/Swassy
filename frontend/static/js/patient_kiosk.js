@@ -985,15 +985,22 @@ const PatientKiosk = {
                     `;
                   } else {
                     return `
-                      <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; padding: 0.75rem 1.2rem; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                          <span style="font-weight: 800; font-size: 0.75rem; color: #2e7d32; background: rgba(46,125,50,0.1); padding: 4px 8px; border-radius: 4px;">DOC</span>
-                          <div>
-                            <strong style="font-size: 0.88rem; color: #0f172a;">${f.file_name}</strong>
-                            <div style="font-size: 0.74rem; color: #64748b;">${f.hospital_name ? f.hospital_name + ' • ' : ''}<span style="text-transform: uppercase; font-weight: 700; color: #2e7d32;">${f.file_type}</span></div>
+                      <div style="background: #ffffff; border: 1px solid #e2e8f0; padding: 0.85rem 1.2rem; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-weight: 800; font-size: 0.75rem; color: #2e7d32; background: rgba(46,125,50,0.1); padding: 4px 8px; border-radius: 4px;">DOC</span>
+                            <div>
+                              <strong style="font-size: 0.88rem; color: #0f172a;">${f.file_name}</strong>
+                              <div style="font-size: 0.74rem; color: #64748b;">${f.hospital_name ? f.hospital_name + ' • ' : ''}<span style="text-transform: uppercase; font-weight: 700; color: #2e7d32;">${f.file_type}</span></div>
+                            </div>
                           </div>
+                          <span style="font-size: 0.76rem; color: #059669; font-weight: 800; background: #ecfdf5; padding: 3px 8px; border-radius: 6px;">✓ Scanned for Doctor</span>
                         </div>
-                        <span style="font-size: 0.76rem; color: #059669; font-weight: 800; background: #ecfdf5; padding: 3px 8px; border-radius: 6px;">Ready for Doctor</span>
+                        ${f.summary ? `
+                          <div style="margin-top: 0.45rem; font-size: 0.78rem; color: #475569; background: #f8fafc; padding: 0.4rem 0.65rem; border-radius: 6px; border-left: 3px solid #10b981;">
+                            <strong>Extracted Summary:</strong> ${f.summary}
+                          </div>
+                        ` : ''}
                       </div>
                     `;
                   }
@@ -1166,10 +1173,12 @@ const PatientKiosk = {
           file_id: res.file_id,
           file_name: res.file_name,
           file_type: res.file_type,
-          hospital_name: res.hospital_name
+          hospital_name: res.hospital_name,
+          summary: res.summary || '',
+          ocr_extracted: res.ocr_extracted
         });
         this.renderStep();
-        SwasyaApp.showToast(`Uploaded ${res.file_type.toUpperCase()}: ${res.file_name}`, "success");
+        SwasyaApp.showToast(`Uploaded & Scanned ${res.file_type.toUpperCase()}: ${res.file_name}`, "success");
       }
     } catch(err) {
       SwasyaApp.showToast("Upload notice: " + (err.message || err), "error");

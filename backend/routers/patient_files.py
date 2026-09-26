@@ -55,15 +55,42 @@ async def upload_patient_record(
 
     # If it's a document/prescription, scan, MRI, CT, Sonography or lab report, run OCR
     ocr_text = ""
+    parsed_info = {}
     try:
-        if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.pdf', '.webp')) or file_type in ('prescription', 'discharge_summary', 'lab_report', 'mri', 'ct_scan', 'sonography', 'xray'):
+        if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.pdf', '.webp', '.txt', '.csv')) or file_type in ('prescription', 'discharge_summary', 'lab_report', 'mri', 'ct_scan', 'sonography', 'xray', 'other'):
             ocr_text = extract_text_from_file(str(target_path))
-    except Exception:
+            if ocr_text:
+                parsed_info = parse_medical_document(ocr_text)
+    except Exception as e:
+        print(f"OCR/Parsing error on patient file upload: {e}")
         ocr_text = ""
+        parsed_info = {}
 
     # Save in database
     db = get_db()
     try:
+        # If allergies or chronic conditions found in the document, link to patient record
+        if parsed_info.get("allergies") or parsed_info.get("conditions"):
+            try:
+                p_filter = {"_id": ObjectId(patient_id)} if ObjectId.is_valid(patient_id) else {"_id": patient_id}
+                p_curr = await db.patients.find_one(p_filter)
+                if p_curr:
+                    updates = {}
+                    if parsed_info.get("allergies"):
+                        curr_all = p_curr.get("allergies") or ""
+                        new_all = ", ".join(parsed_info["allergies"])
+                        if new_all and new_all.lower() not in curr_all.lower():
+                            updates["allergies"] = f"{curr_all}, {new_all}".strip(", ")
+                    if parsed_info.get("conditions"):
+                        curr_cond = p_curr.get("chronic_conditions") or ""
+                        new_cond = ", ".join(parsed_info["conditions"])
+                        if new_cond and new_cond.lower() not in curr_cond.lower():
+                            updates["chronic_conditions"] = f"{curr_cond}, {new_cond}".strip(", ")
+                    if updates:
+                        await db.patients.update_one(p_filter, {"$set": updates})
+            except Exception as pe:
+                print("Patient allergy/condition update notice:", pe)
+
         doc = {
             "patient_id": patient_id,
             "triage_id": triage_id,
@@ -76,6 +103,8 @@ async def upload_patient_record(
             "visit_date": visit_date or "",
             "notes": notes or "",
             "ocr_text": ocr_text or "",
+            "extracted_summary": parsed_info.get("summary", ""),
+            "extracted_data_json": parsed_info,
             "uploaded_at": datetime.utcnow()
         }
         result = await db.patient_files.insert_one(doc)
@@ -90,7 +119,9 @@ async def upload_patient_record(
             "file_path": rel_path,
             "file_size_bytes": file_size,
             "hospital_name": hospital_name,
-            "ocr_extracted": bool(ocr_text)
+            "ocr_extracted": bool(ocr_text),
+            "summary": parsed_info.get("summary", ""),
+            "extracted_data": parsed_info
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error saving file record: {str(e)}")

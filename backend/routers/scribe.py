@@ -17,6 +17,7 @@ from backend.config import (
     GROQ_API_KEY,
     GROQ_MODEL
 )
+from backend.ocr_engine import parse_medical_document
 
 router = APIRouter(prefix="/api/scribe", tags=["Voice Scribe & AI SOAP Notes"])
 
@@ -1439,23 +1440,29 @@ OUTPUT STRICTLY AS VALID JSON (no markdown formatting, no backticks, no code blo
 """
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-            payload = {
-                "model": GROQ_MODEL or "llama-3.3-70b-versatile",
-                "messages": [
-                    {"role": "system", "content": "You are a clinical physician AI. Output strictly valid JSON matching the requested schema without unnecessary tests."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.1,
-                "max_tokens": 800
-            }
-            res = requests.post(url, json=payload, headers=headers, timeout=6)
-            if res.status_code == 200:
-                raw_content = res.json()["choices"][0]["message"]["content"].strip()
-                clean_json = re.sub(r'^```(?:json)?\s*', '', raw_content)
-                clean_json = re.sub(r'\s*```$', '', clean_json).strip()
-                parsed = json.loads(clean_json)
-                parsed["ai_provider"] = f"Groq Cloud ({GROQ_MODEL})"
-                return parsed
+            groq_models = [m for m in ["openai/gpt-oss-20b", "openai/gpt-oss-120b", GROQ_MODEL] if m]
+            groq_models = list(dict.fromkeys(groq_models))
+            for model_name in groq_models:
+                try:
+                    payload = {
+                        "model": model_name,
+                        "messages": [
+                            {"role": "system", "content": "You are a clinical physician AI. Output strictly valid JSON matching the requested schema without unnecessary tests."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": 0.1,
+                        "max_tokens": 1000
+                    }
+                    res = requests.post(url, json=payload, headers=headers, timeout=8)
+                    if res.status_code == 200:
+                        raw_content = res.json()["choices"][0]["message"]["content"].strip()
+                        clean_json = re.sub(r'^```(?:json)?\s*', '', raw_content)
+                        clean_json = re.sub(r'\s*```$', '', clean_json).strip()
+                        parsed = json.loads(clean_json)
+                        parsed["ai_provider"] = f"Groq Cloud ({model_name})"
+                        return parsed
+                except Exception:
+                    continue
         except Exception as e:
             print("Groq treatment synthesis error:", e)
 
@@ -1466,15 +1473,21 @@ OUTPUT STRICTLY AS VALID JSON (no markdown formatting, no backticks, no code blo
 CRITICAL: Tailor investigations and medications STRICTLY to the patient's actual reported symptoms and documents. DO NOT add unnecessary tests (e.g. no stool tests unless diarrhea/GI symptoms; no cardiac markers unless chest pain; no MRI unless spinal/neurological signs).
 Patient: {patient.get('name')}, {patient.get('age')}y {patient.get('gender')}. Conditions: {patient.get('chronic_conditions')}. Allergies: {patient.get('allergies')}.
 Conversation:\n{convo_text}\nImaging Scans:\n{img_str}\nDocuments:\n{doc_str}"""
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-            res = requests.post(url, headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=6)
-            if res.status_code == 200:
-                raw_content = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                clean_json = re.sub(r'^```(?:json)?\s*', '', raw_content)
-                clean_json = re.sub(r'\s*```$', '', clean_json).strip()
-                parsed = json.loads(clean_json)
-                parsed["ai_provider"] = f"Google Gemini ({GEMINI_MODEL})"
-                return parsed
+            gemini_models = [m for m in [GEMINI_MODEL, "gemini-1.5-flash", "gemini-2.0-flash"] if m]
+            gemini_models = list(dict.fromkeys(gemini_models))
+            for g_model in gemini_models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={GEMINI_API_KEY}"
+                    res = requests.post(url, headers={"Content-Type": "application/json"}, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1200}}, timeout=10)
+                    if res.status_code == 200:
+                        raw_content = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        clean_json = re.sub(r'^```(?:json)?\s*', '', raw_content)
+                        clean_json = re.sub(r'\s*```$', '', clean_json).strip()
+                        parsed = json.loads(clean_json)
+                        parsed["ai_provider"] = f"Google Gemini ({g_model})"
+                        return parsed
+                except Exception:
+                    continue
         except Exception as e:
             print("Gemini treatment synthesis error:", e)
 
@@ -1762,15 +1775,58 @@ async def get_soap_note(triage_id: str, current_user: Optional[dict] = Depends(g
             "file_url": pf.get("file_path"),
             "date": str(pf.get("uploaded_at", ""))
         })
-        
-        summary_text = f"{pf_type} ({pf_name})"
-        if pf.get("hospital_name"):
-            summary_text += f" from {pf['hospital_name']}"
-        if pf_ocr:
-            summary_text += f": Findings/Text: {pf_ocr[:280]}..."
+
+        # Structured parsing from actual OCR text
+        pf_parsed = pf.get("extracted_data_json")
+        if (not pf_parsed or not isinstance(pf_parsed, dict)) and pf_ocr:
+            try:
+                pf_parsed = parse_medical_document(pf_ocr)
+                if pf_parsed:
+                    await db.patient_files.update_one(
+                        {"_id": pf["_id"]},
+                        {"$set": {
+                            "extracted_data_json": pf_parsed,
+                            "extracted_summary": pf_parsed.get("summary", "")
+                        }}
+                    )
+            except Exception as pe:
+                print("On-the-fly document parsing error:", pe)
+                pf_parsed = {}
+
+        if pf_parsed and isinstance(pf_parsed, dict):
+            for m in pf_parsed.get("medicines", []):
+                if isinstance(m, dict) and m.get("name"):
+                    extracted_meds.append(m)
+                elif isinstance(m, str) and m:
+                    extracted_meds.append({
+                        "name": m,
+                        "dosage": "Prescribed dose",
+                        "frequency": "OD",
+                        "duration": "Documented",
+                        "instructions": "From uploaded prescription"
+                    })
+            for t in pf_parsed.get("tests", []):
+                if isinstance(t, dict) and (t.get("test") or t.get("name")):
+                    extracted_labs.append({
+                        "test": t.get("test") or t.get("name"),
+                        "value": t.get("value", "Recorded"),
+                        "status": t.get("status", "Recorded")
+                    })
+
+        doc_summary_item = ""
+        if pf.get("extracted_summary"):
+            doc_summary_item = f"{pf_type} ({pf_name}): {pf['extracted_summary']}"
+        elif pf_parsed and pf_parsed.get("summary"):
+            doc_summary_item = f"{pf_type} ({pf_name}): {pf_parsed['summary']}"
+        elif pf_ocr:
+            doc_summary_item = f"{pf_type} ({pf_name}): {pf_ocr[:220]}..."
         elif pf_notes:
-            summary_text += f": Notes: {pf_notes}"
-        doc_summaries.append(summary_text)
+            doc_summary_item = f"{pf_type} ({pf_name}): Notes: {pf_notes}"
+        else:
+            doc_summary_item = f"{pf_type} ({pf_name}) on file."
+
+        if doc_summary_item:
+            doc_summaries.append(doc_summary_item)
         
         if pf_type in ("MRI", "CT_SCAN", "SONOGRAPHY", "XRAY", "LAB_REPORT"):
             imaging_findings.append({
@@ -1778,20 +1834,8 @@ async def get_soap_note(triage_id: str, current_user: Optional[dict] = Depends(g
                 "filename": pf_name,
                 "hospital": pf.get("hospital_name", "Hospital Scan"),
                 "date": pf.get("visit_date", ""),
-                "findings": pf_ocr[:250] if pf_ocr else (pf_notes or "Uploaded clinical diagnostic scan")
+                "findings": (pf_parsed.get("summary") if pf_parsed else None) or (pf_ocr[:250] if pf_ocr else (pf_notes or "Uploaded clinical diagnostic scan"))
             })
-
-    # Default fallbacks if empty
-    if not extracted_meds and patient.get("chronic_conditions"):
-        extracted_meds = [
-            {"name": "Tab Telmisartan", "dosage": "40mg", "frequency": "OD (Morning)", "duration": "30 days", "instructions": "After meals"},
-            {"name": "Tab Metformin", "dosage": "500mg", "frequency": "BD", "duration": "30 days", "instructions": "After food"}
-        ]
-    if not extracted_labs:
-        extracted_labs = [
-            {"test": "Fasting Blood Sugar (FBS)", "value": "142 mg/dL", "status": "High (Normal: 70-100)"},
-            {"test": "Platelet Count", "value": "210,000 /cumm", "status": "Normal range"}
-        ]
 
     v_row = await db.voice_sessions.find_one({"triage_id": triage_id}, sort=[("_id", -1)])
     raw_transcript = v_row.get("raw_transcript") if v_row else triage.get("chief_complaint", "")
@@ -1809,8 +1853,16 @@ async def get_soap_note(triage_id: str, current_user: Optional[dict] = Depends(g
         "raw_transcript": raw_transcript
     }
 
+    doc_info_summary = ""
+    if doc_summaries:
+        doc_info_summary = "; ".join(doc_summaries[:3])
+    elif original_docs:
+        doc_info_summary = f"{len(original_docs)} medical document(s) uploaded and verified."
+    else:
+        doc_info_summary = "No previous medical documents or scans uploaded for this patient."
+
     doc_information = {
-        "summary": "Medical records, MRI/CT/Sonography scans, and prescriptions parsed via OCR.",
+        "summary": doc_info_summary,
         "extracted_medications": extracted_meds,
         "extracted_lab_tests": extracted_labs,
         "imaging_findings": imaging_findings
@@ -1868,11 +1920,21 @@ async def generate_final_report(req: FinalReportRequest):
     
     past_consults = await db.consultations.find({"patient_id": p["id"]}).sort("completed_at", -1).to_list(None)
     docs = await db.documents.find({"patient_id": p["id"]}).sort("created_at", -1).limit(5).to_list(None)
+    pfiles = await db.patient_files.find({"patient_id": p["id"]}).sort("uploaded_at", -1).limit(5).to_list(None)
 
     doc_summaries = []
     for d in docs:
         if d.get("extracted_summary"):
             doc_summaries.append(f"{d.get('doc_type', 'DOC').upper()} ({d.get('original_filename', 'doc')}): {d['extracted_summary']}")
+        elif d.get("ocr_text"):
+            doc_summaries.append(f"{d.get('doc_type', 'DOC').upper()}: {d['ocr_text'][:200]}")
+    for pf in pfiles:
+        pf_type = pf.get("file_type", "DOC").upper()
+        pf_fname = pf.get("original_filename") or pf.get("file_name", "document")
+        if pf.get("extracted_summary"):
+            doc_summaries.append(f"{pf_type} ({pf_fname}): {pf['extracted_summary']}")
+        elif pf.get("ocr_text"):
+            doc_summaries.append(f"{pf_type} ({pf_fname}) Findings: {pf['ocr_text'][:200]}")
 
     convo_text = "\n".join([f"{m.get('sender', 'Patient')}: {m.get('text', '')}" for m in req.chat_messages])
     raw_convo_lower = convo_text.lower()

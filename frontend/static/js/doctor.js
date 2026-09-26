@@ -395,14 +395,29 @@ const DoctorDesk = {
     const docsInfo = sections.document_information || {};
     const docsEl = document.getElementById("doc-extracted-info-body");
     if (docsEl) {
+      const summary = docsInfo.summary || '';
       const meds = docsInfo.extracted_medications || [];
       const labs = docsInfo.extracted_lab_tests || [];
 
-      let medsHtml = '<p style="color: #64748b; font-size: 0.85rem;">No medications extracted from uploaded documents.</p>';
+      let summaryHtml = '';
+      if (summary && !summary.toLowerCase().includes('no previous medical documents')) {
+        summaryHtml = `
+          <div style="background: #fdf4ff; border: 1.5px solid #f0abfc; border-radius: 10px; padding: 0.85rem 1.1rem; margin-bottom: 1rem; color: #701a75;">
+            <div style="font-weight: 800; font-size: 0.88rem; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 6px;">
+              <span>📋</span> Document Clinical Synthesis (OCR):
+            </div>
+            <div style="font-size: 0.86rem; line-height: 1.55; color: #4a044e;">
+              ${summary}
+            </div>
+          </div>
+        `;
+      }
+
+      let medsHtml = '<p style="color: #64748b; font-size: 0.85rem; margin-bottom: 0.5rem;">No ongoing medications documented in uploaded records.</p>';
       if (meds.length > 0) {
         medsHtml = `
           <div style="overflow-x: auto; margin-bottom: 0.75rem;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #ffffff; border: 1px solid #e2e8f0;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;">
               <thead>
                 <tr style="background: #fdf4ff; text-align: left; border-bottom: 1px solid #f5d0fe; color: #86198f;">
                   <th style="padding: 0.45rem 0.65rem;">Extracted Medication</th>
@@ -415,9 +430,9 @@ const DoctorDesk = {
                 ${meds.map(m => `
                   <tr style="border-bottom: 1px solid #f1f5f9;">
                     <td style="padding: 0.45rem 0.65rem; font-weight: 700; color: #0f172a;">${m.name}</td>
-                    <td style="padding: 0.45rem 0.65rem;">${m.dosage}</td>
-                    <td style="padding: 0.45rem 0.65rem;">${m.frequency}</td>
-                    <td style="padding: 0.45rem 0.65rem; color: #64748b;">${m.instructions}</td>
+                    <td style="padding: 0.45rem 0.65rem;">${m.dosage || 'Prescribed'}</td>
+                    <td style="padding: 0.45rem 0.65rem;">${m.frequency || 'OD'}</td>
+                    <td style="padding: 0.45rem 0.65rem; color: #64748b;">${m.instructions || 'From uploaded prescription'}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -430,21 +445,25 @@ const DoctorDesk = {
       if (labs.length > 0) {
         labsHtml = `
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
-            ${labs.map(l => `
-              <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem;">
-                <strong>${l.test}:</strong> <span style="font-weight: 700; color: ${l.status.toLowerCase().includes('high') ? '#dc2626' : '#059669'};">${l.value}</span> (${l.status})
-              </div>
-            `).join('')}
+            ${labs.map(l => {
+              const isAbnormal = (l.status || '').toLowerCase().includes('high') || (l.status || '').toLowerCase().includes('low') || (l.status || '').toLowerCase().includes('abnormal');
+              return `
+                <div style="background: #ffffff; border: 1.5px solid ${isAbnormal ? '#fecaca' : '#cbd5e1'}; border-radius: 8px; padding: 0.5rem 0.85rem; font-size: 0.82rem; box-shadow: 0 1px 4px rgba(0,0,0,0.04);">
+                  <strong style="color: #0f172a;">${l.test}:</strong> <span style="font-weight: 800; color: ${isAbnormal ? '#dc2626' : '#059669'};">${l.value}</span> <span style="font-size: 0.74rem; color: #64748b;">(${l.status})</span>
+                </div>
+              `;
+            }).join('')}
           </div>
         `;
       }
 
       docsEl.innerHTML = `
+        ${summaryHtml}
         <div style="font-weight: 700; font-size: 0.85rem; color: #86198f; margin-bottom: 0.35rem;">
           Past Ongoing Medications Extracted from Prescriptions:
         </div>
         ${medsHtml}
-        ${labs.length > 0 ? `<div style="font-weight: 700; font-size: 0.85rem; color: #86198f; margin-top: 0.5rem; margin-bottom: 0.25rem;">Pathology Lab Biomarkers:</div>${labsHtml}` : ''}
+        ${labs.length > 0 ? `<div style="font-weight: 700; font-size: 0.85rem; color: #86198f; margin-top: 0.85rem; margin-bottom: 0.35rem;">Pathology Lab Biomarkers Extracted:</div>${labsHtml}` : ''}
       `;
     }
 
