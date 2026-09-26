@@ -91,6 +91,38 @@ async def list_users(current_user: dict = Depends(get_current_user)):
         users.append(u)
     return {"users": users}
 
+@router.get("/doctors")
+async def list_doctors():
+    db = get_db()
+    cursor = db.users.find({"role": "doctor"}).sort("full_name", 1)
+    doctors = []
+    async for u in cursor:
+        doctors.append({
+            "id": str(u["_id"]),
+            "username": u.get("username"),
+            "full_name": u.get("full_name") or u.get("username"),
+            "role": u.get("role", "doctor"),
+            "phc_center": u.get("phc_center") or "PHC Civil Hospital OPD"
+        })
+    if not doctors:
+        doctors = [
+            {
+                "id": "dr_ramesh",
+                "username": "dr_ramesh",
+                "full_name": "Dr. Ramesh Kumar, MBBS, MD",
+                "role": "doctor",
+                "phc_center": "PHC Civil Hospital OPD - Room 102"
+            },
+            {
+                "id": "dr_priya",
+                "username": "dr_priya",
+                "full_name": "Dr. Priya Sharma, MBBS, DCH",
+                "role": "doctor",
+                "phc_center": "PHC Civil Hospital OPD - Room 103"
+            }
+        ]
+    return {"doctors": doctors}
+
 class ApiKeysUpdateRequest(BaseModel):
     gemini_api_key: Optional[str] = ""
     groq_api_key: Optional[str] = ""

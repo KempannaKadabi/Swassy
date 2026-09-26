@@ -360,9 +360,18 @@
                   <span>Patient Queue</span>
                 </div>
                 <div style="display: flex; gap: 0.35rem;">
-                  <button type="button" class="btn btn-secondary btn-sm" onclick="DoctorDesk.refresh()" style="font-size: 0.75rem; padding: 3px 8px;" title="Refresh Queue"></button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="DoctorDesk.refresh()" style="font-size: 0.75rem; padding: 3px 8px;" title="Refresh Queue">🔄</button>
                   <button type="button" class="btn btn-primary btn-sm" onclick="PatientKiosk.resetForNewPatient(); SwasyaApp.switchTab('kiosk-tab');" style="font-size: 0.75rem; padding: 3px 8px; font-weight: 700;" title="Add or Check-In New Patient">+ Add New</button>
                 </div>
+              </div>
+              <!-- Queue Filter: Assigned To Me vs Hospital-Wide -->
+              <div style="padding: 0.45rem 0.75rem; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; display: flex; gap: 0.4rem;">
+                <button type="button" id="btn-queue-my-patients" class="btn btn-sm btn-primary" style="flex: 1; font-size: 0.74rem; padding: 4px 6px; font-weight: 700;" onclick="DoctorDesk.setQueueFilter(false)">
+                  👤 My Patients
+                </button>
+                <button type="button" id="btn-queue-all-patients" class="btn btn-sm btn-secondary" style="flex: 1; font-size: 0.74rem; padding: 4px 6px; font-weight: 700;" onclick="DoctorDesk.setQueueFilter(true)">
+                  🏥 All OPD Queue
+                </button>
               </div>
               <div class="card-body" style="padding: 0.75rem;">
                 <div class="queue-list" id="doctor-queue-list">
@@ -773,6 +782,15 @@
                       </div>
                     </div>
                     <textarea id="vitals-complaint" name="chief_complaint" class="form-textarea" rows="3" required placeholder="Describe patient symptoms or click Voice Scribe..."></textarea>
+                  </div>
+
+                  <!-- Route to Doctor -->
+                  <div class="form-group" style="margin-bottom: 0.85rem;">
+                    <label class="form-label" style="font-weight: 700; color: #1e293b;">Assign / Route to Doctor *</label>
+                    <select id="vitals-doctor-select" class="form-select" style="font-weight: 600; border: 1.5px solid #059669; background: #f0fdf4;">
+                      <option value="dr_ramesh">👨‍⚕️ Dr. Ramesh Kumar, MBBS, MD (Room 102)</option>
+                      <option value="dr_priya">👨‍⚕️ Dr. Priya Sharma, MBBS, DCH (Room 103)</option>
+                    </select>
                   </div>
 
                   <!-- OCR Document Upload -->

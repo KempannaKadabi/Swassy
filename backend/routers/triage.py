@@ -18,6 +18,9 @@ class CreateTriageRequest(BaseModel):
     weight_kg: Optional[float] = None
     height_cm: Optional[float] = None
     chief_complaint: str
+    doctor_id: Optional[str] = None
+    doctor_username: Optional[str] = None
+    doctor_name: Optional[str] = None
 
 class UpdateQueueStatusRequest(BaseModel):
     queue_status: str
@@ -31,6 +34,9 @@ class KioskCheckinRequest(BaseModel):
     spo2: Optional[int] = 98
     temperature: Optional[float] = 98.6
     blood_sugar: Optional[float] = 100.0
+    doctor_id: Optional[str] = None
+    doctor_username: Optional[str] = None
+    doctor_name: Optional[str] = None
 
 def compute_urgency(bp_sys, bp_dia, hr, spo2, temp, rbs, complaint):
     """
@@ -59,14 +65,55 @@ def compute_urgency(bp_sys, bp_dia, hr, spo2, temp, rbs, complaint):
     return "normal"
 
 @router.get("/queue")
-async def get_queue():
+async def get_queue(
+    doctor_id: Optional[str] = None,
+    doctor_username: Optional[str] = None,
+    all_doctors: Optional[bool] = False,
+    current_user: Optional[dict] = Depends(get_optional_user)
+):
     db = get_db()
     
+    target_doc_id = doctor_id
+    target_doc_user = doctor_username
+    if current_user and isinstance(current_user, dict) and current_user.get("role") == "doctor":
+        if not target_doc_user:
+            target_doc_user = current_user.get("username")
+        if not target_doc_id:
+            target_doc_id = str(current_user.get("id"))
+
     # Use direct query to ensure 100% compatibility with mongomock and MongoDB
     triage_records = await db.triage_records.find({}).sort("recorded_at", -1).to_list(None)
     
+    # Deduplicate active records by patient_id: each patient has at most 1 active ticket in queue
+    seen_patient_ids = set()
     rows = []
+    
     for doc in triage_records:
+        pid_raw = doc.get("patient_id")
+        pid_str = str(pid_raw) if pid_raw is not None else ""
+        queue_status = doc.get("queue_status", "waiting_for_doctor")
+        
+        # Deduplication check for active queue items so the same patient never appears twice
+        if queue_status in ("waiting_for_doctor", "in_consultation"):
+            if pid_str and pid_str in seen_patient_ids:
+                continue
+            if pid_str:
+                seen_patient_ids.add(pid_str)
+
+        # Filtering by assigned doctor:
+        doc_username_val = doc.get("doctor_username")
+        doc_id_val = doc.get("doctor_id")
+        
+        if target_doc_user and not all_doctors:
+            is_assigned_to_me = (
+                (doc_username_val and doc_username_val == target_doc_user) or
+                (doc_id_val and doc_id_val == target_doc_id)
+            )
+            is_unassigned = not doc_username_val and not doc_id_val
+            if not is_assigned_to_me and not is_unassigned:
+                # Patient explicitly assigned to a different doctor
+                continue
+
         triage_id_str = str(doc["_id"])
         row = {
             "triage_id": triage_id_str,
@@ -81,7 +128,10 @@ async def get_queue():
             "bmi": doc.get("bmi"),
             "chief_complaint": doc.get("chief_complaint") or "General medical consultation",
             "triage_urgency": doc.get("triage_urgency", "normal"),
-            "queue_status": doc.get("queue_status", "waiting_for_doctor")
+            "queue_status": queue_status,
+            "doctor_id": doc_id_val,
+            "doctor_username": doc_username_val,
+            "doctor_name": doc.get("doctor_name")
         }
         
         patient_id = doc.get("patient_id")
@@ -110,7 +160,7 @@ async def get_queue():
             else:
                 row.update({
                     "patient_id": patient_id,
-                    "uhid": f"UHID-{patient_id[:6]}",
+                    "uhid": f"UHID-{str(patient_id)[:6]}",
                     "patient_name": "Patient",
                     "age": 30,
                     "gender": "Other"
@@ -157,7 +207,7 @@ async def get_queue():
 async def kiosk_checkin(req: KioskCheckinRequest):
     """
     Called immediately when a patient completes Step 1 registration on the kiosk.
-    Creates a real-time queue ticket so the patient instantly reflects on Doctor Desk.
+    Creates or updates a real-time queue ticket so the patient instantly reflects on Doctor Desk.
     """
     db = get_db()
     from datetime import datetime
@@ -165,21 +215,42 @@ async def kiosk_checkin(req: KioskCheckinRequest):
     
     # Check if this patient already has an active waiting triage ticket
     existing_triage = await db.triage_records.find_one({
-        "patient_id": req.patient_id,
+        "$or": [
+            {"patient_id": req.patient_id},
+            {"patient_id": str(req.patient_id)}
+        ],
         "queue_status": "waiting_for_doctor"
     }, sort=[("recorded_at", -1)])
     
     if existing_triage:
+        update_doc = {
+            "chief_complaint": req.chief_complaint or existing_triage.get("chief_complaint", "Registered at Kiosk — Intake in progress"),
+            "recorded_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
+        }
+        if req.doctor_id:
+            update_doc["doctor_id"] = req.doctor_id
+        if req.doctor_username:
+            update_doc["doctor_username"] = req.doctor_username
+        if req.doctor_name:
+            update_doc["doctor_name"] = req.doctor_name
+
+        await db.triage_records.update_one(
+            {"_id": existing_triage["_id"]},
+            {"$set": update_doc}
+        )
         return {
             "triage_id": str(existing_triage["_id"]),
             "patient_id": req.patient_id,
             "status": "waiting_for_doctor",
-            "message": "Existing active queue ticket retrieved"
+            "message": "Existing active queue ticket updated"
         }
     
     triage_data = {
         "patient_id": req.patient_id,
         "nurse_id": None,
+        "doctor_id": req.doctor_id,
+        "doctor_username": req.doctor_username,
+        "doctor_name": req.doctor_name,
         "bp_systolic": req.bp_systolic or 120,
         "bp_diastolic": req.bp_diastolic or 80,
         "heart_rate": req.heart_rate or 76,
@@ -208,11 +279,13 @@ async def kiosk_checkin(req: KioskCheckinRequest):
     p_name = patient.get("name", "Patient") if patient else "Patient"
     allergies = patient.get("allergies", "None reported") if patient else "None reported"
     chronic = patient.get("chronic_conditions", "None reported") if patient else "None reported"
+    doc_display = f" Assigned Doctor: {req.doctor_name}." if req.doctor_name else ""
     
     soap_insert = {
         "triage_id": triage_id,
         "patient_id": req.patient_id,
-        "subjective": f"Patient {p_name} registered via kiosk intake. Chief complaint: {req.chief_complaint}. Documented allergies: {allergies}. Comorbidities: {chronic}.",
+        "doctor_id": req.doctor_id,
+        "subjective": f"Patient {p_name} registered via kiosk intake.{doc_display} Chief complaint: {req.chief_complaint}. Documented allergies: {allergies}. Comorbidities: {chronic}.",
         "objective": f"Baseline vitals: BP {triage_data['bp_systolic']}/{triage_data['bp_diastolic']} mmHg, HR {triage_data['heart_rate']} bpm, SpO2 {triage_data['spo2']}%, Temp {triage_data['temperature']}°F.",
         "assessment": f"Initial clinical evaluation in progress for {p_name}.",
         "plan": "Complete clinical interview, review past medical documents/prescriptions, and finalize physician assessment.",
@@ -246,14 +319,26 @@ async def record_triage(req: CreateTriageRequest, current_user: Optional[dict] =
         req.spo2, req.temperature, req.blood_sugar, req.chief_complaint
     )
 
-    nurse_id = str(current_user.get("id")) if current_user.get("id") else None
+    nurse_id = str(current_user.get("id")) if current_user and isinstance(current_user, dict) and current_user.get("id") else None
 
     from datetime import datetime
     import pytz
     
+    # Check if this patient already has an active waiting triage ticket
+    existing_triage = await db.triage_records.find_one({
+        "$or": [
+            {"patient_id": req.patient_id},
+            {"patient_id": str(req.patient_id)}
+        ],
+        "queue_status": "waiting_for_doctor"
+    }, sort=[("recorded_at", -1)])
+
     triage_data = {
         "patient_id": req.patient_id,
         "nurse_id": nurse_id,
+        "doctor_id": req.doctor_id,
+        "doctor_username": req.doctor_username,
+        "doctor_name": req.doctor_name,
         "bp_systolic": req.bp_systolic,
         "bp_diastolic": req.bp_diastolic,
         "heart_rate": req.heart_rate,
@@ -269,8 +354,15 @@ async def record_triage(req: CreateTriageRequest, current_user: Optional[dict] =
         "recorded_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
     }
     
-    result = await db.triage_records.insert_one(triage_data)
-    triage_id = str(result.inserted_id)
+    if existing_triage:
+        triage_id = str(existing_triage["_id"])
+        await db.triage_records.update_one(
+            {"_id": existing_triage["_id"]},
+            {"$set": triage_data}
+        )
+    else:
+        result = await db.triage_records.insert_one(triage_data)
+        triage_id = str(result.inserted_id)
 
     patient = await db.patients.find_one({"_id": ObjectId(req.patient_id)})
     if patient:
@@ -283,6 +375,7 @@ async def record_triage(req: CreateTriageRequest, current_user: Optional[dict] =
         soap_insert = {
             "triage_id": triage_id,
             "patient_id": req.patient_id,
+            "doctor_id": req.doctor_id,
             "subjective": soap_data["subjective"],
             "objective": soap_data["objective"],
             "assessment": soap_data["assessment"],
@@ -294,7 +387,11 @@ async def record_triage(req: CreateTriageRequest, current_user: Optional[dict] =
             "created_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat(),
             "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
         }
-        await db.soap_notes.insert_one(soap_insert)
+        await db.soap_notes.update_one(
+            {"triage_id": triage_id},
+            {"$set": soap_insert},
+            upsert=True
+        )
 
     triage = await db.triage_records.find_one({"_id": ObjectId(triage_id)})
     if triage:

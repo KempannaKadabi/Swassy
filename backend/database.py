@@ -62,7 +62,7 @@ async def init_db(force_seed: bool = False):
             await db.counters.insert_one({"_id": "triageid", "sequence_value": 0})
             await db.counters.insert_one({"_id": "consultationid", "sequence_value": 0})
             await db.counters.insert_one({"_id": "documentid", "sequence_value": 0})
-        # Seed default attending physician account if not exists
+        # Seed default attending physician accounts if not exists
         doc_user = await db.users.find_one({"username": "dr_ramesh"})
         if not doc_user:
             import hashlib
@@ -72,7 +72,20 @@ async def init_db(force_seed: bool = False):
                 "password_hash": hashlib.sha256("doctor123".encode()).hexdigest(),
                 "full_name": "Dr. Ramesh Kumar, MBBS, MD",
                 "role": "doctor",
-                "phc_center": "PHC Civil Hospital OPD",
+                "phc_center": "PHC Civil Hospital OPD - Room 102",
+                "created_at": datetime.utcnow()
+            })
+
+        doc_user2 = await db.users.find_one({"username": "dr_priya"})
+        if not doc_user2:
+            import hashlib
+            from datetime import datetime
+            await db.users.insert_one({
+                "username": "dr_priya",
+                "password_hash": hashlib.sha256("doctor123".encode()).hexdigest(),
+                "full_name": "Dr. Priya Sharma, MBBS, DCH",
+                "role": "doctor",
+                "phc_center": "PHC Civil Hospital OPD - Room 103",
                 "created_at": datetime.utcnow()
             })
 

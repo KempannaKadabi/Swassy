@@ -66,6 +66,9 @@ class FinalReportRequest(BaseModel):
     vitals: Optional[Dict[str, Any]] = None
     uploaded_doc_ids: Optional[List[str]] = None
     urgency_level: Optional[str] = "normal"
+    doctor_id: Optional[str] = None
+    doctor_username: Optional[str] = None
+    doctor_name: Optional[str] = None
 
 # ==============================================================================
 # COMPREHENSIVE 8-DIMENSION CLINICAL QUESTION DICTIONARY
@@ -1946,35 +1949,79 @@ Awaiting attending physician physical examination and clinical determination.
     from datetime import datetime
     import pytz
     
-    t_res = await db.triage_records.insert_one({
-        "patient_id": p["id"],
-        "bp_systolic": 128,
-        "bp_diastolic": 82,
-        "heart_rate": 80,
-        "spo2": 98,
-        "temperature": 98.6,
-        "blood_sugar": 110.0,
-        "chief_complaint": cc,
-        "triage_urgency": urgency,
-        "queue_status": "waiting_for_doctor",
-        "recorded_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
-    })
-    triage_id = str(t_res.inserted_id)
+    # Check if an active waiting triage record already exists for this patient
+    existing_triage = await db.triage_records.find_one({
+        "$or": [
+            {"patient_id": p["id"]},
+            {"patient_id": str(p["id"])},
+            {"patient_id": patient.get("uhid")}
+        ],
+        "queue_status": "waiting_for_doctor"
+    }, sort=[("recorded_at", -1)])
 
-    await db.soap_notes.insert_one({
-        "triage_id": triage_id,
-        "patient_id": p["id"],
-        "subjective": report_text,
-        "objective": "BP: 128/82 mmHg, Pulse: 80 bpm, SpO2: 98%, Temp: 98.6 F. Orientation intact.",
-        "assessment": f"Awaiting physician assessment for: {cc}",
-        "plan": "Physician examination and prescription pending.",
-        "red_flags": "\n".join(red_flags) if red_flags else "None",
-        "differential_diagnosis": "Clinical evaluation in progress",
-        "ai_generated": 1,
-        "doctor_reviewed": 0,
-        "created_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat(),
-        "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
-    })
+    if existing_triage:
+        triage_id = str(existing_triage["_id"])
+        update_fields = {
+            "chief_complaint": cc,
+            "triage_urgency": urgency,
+            "recorded_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
+        }
+        if req.doctor_id:
+            update_fields["doctor_id"] = req.doctor_id
+        if req.doctor_username:
+            update_fields["doctor_username"] = req.doctor_username
+        if req.doctor_name:
+            update_fields["doctor_name"] = req.doctor_name
+
+        await db.triage_records.update_one(
+            {"_id": existing_triage["_id"]},
+            {"$set": update_fields}
+        )
+
+        await db.soap_notes.update_one(
+            {"triage_id": triage_id},
+            {"$set": {
+                "subjective": report_text,
+                "doctor_id": req.doctor_id,
+                "red_flags": "\n".join(red_flags) if red_flags else "None",
+                "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
+            }},
+            upsert=True
+        )
+    else:
+        t_res = await db.triage_records.insert_one({
+            "patient_id": p["id"],
+            "bp_systolic": 128,
+            "bp_diastolic": 82,
+            "heart_rate": 80,
+            "spo2": 98,
+            "temperature": 98.6,
+            "blood_sugar": 110.0,
+            "chief_complaint": cc,
+            "triage_urgency": urgency,
+            "queue_status": "waiting_for_doctor",
+            "doctor_id": req.doctor_id,
+            "doctor_username": req.doctor_username,
+            "doctor_name": req.doctor_name,
+            "recorded_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
+        })
+        triage_id = str(t_res.inserted_id)
+
+        await db.soap_notes.insert_one({
+            "triage_id": triage_id,
+            "patient_id": p["id"],
+            "doctor_id": req.doctor_id,
+            "subjective": report_text,
+            "objective": "BP: 128/82 mmHg, Pulse: 80 bpm, SpO2: 98%, Temp: 98.6 F. Orientation intact.",
+            "assessment": f"Awaiting physician assessment for: {cc}",
+            "plan": "Physician examination and prescription pending.",
+            "red_flags": "\n".join(red_flags) if red_flags else "None",
+            "differential_diagnosis": "Clinical evaluation in progress",
+            "ai_generated": 1,
+            "doctor_reviewed": 0,
+            "created_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat(),
+            "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
+        })
 
     await db.voice_sessions.insert_one({
         "patient_id": p["id"],

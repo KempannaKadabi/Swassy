@@ -105,15 +105,55 @@ const DoctorDesk = {
     await this.loadQueue(true);
   },
 
+  showAllPatients: false,
+
+  setQueueFilter(showAll) {
+    this.showAllPatients = showAll;
+    const myBtn = document.getElementById("btn-queue-my-patients");
+    const allBtn = document.getElementById("btn-queue-all-patients");
+    if (myBtn && allBtn) {
+      if (showAll) {
+        allBtn.className = "btn btn-sm btn-primary";
+        myBtn.className = "btn btn-sm btn-secondary";
+      } else {
+        myBtn.className = "btn btn-sm btn-primary";
+        allBtn.className = "btn btn-sm btn-secondary";
+      }
+    }
+    this.loadQueue(true);
+  },
+
   async loadQueue(autoSelect = true) {
     try {
-      const res = await SwasyaApp.api("/api/triage/queue");
+      const params = [];
+      if (SwasyaApp.currentUser && SwasyaApp.currentUser.username) {
+        params.push(`doctor_username=${encodeURIComponent(SwasyaApp.currentUser.username)}`);
+        params.push(`doctor_id=${encodeURIComponent(SwasyaApp.currentUser.id || '')}`);
+      }
+      if (this.showAllPatients) {
+        params.push(`all_doctors=true`);
+      }
+      const url = `/api/triage/queue${params.length ? '?' + params.join('&') : ''}`;
+      const res = await SwasyaApp.api(url);
+
       const listEl = document.getElementById("doctor-queue-list");
       const badge = document.getElementById("doctor-queue-badge");
 
       if (!listEl) return;
 
-      const activeQueue = res.all || [];
+      const rawQueue = res.all || [];
+      // Safety deduplication: ensure each patient appears strictly once in the queue
+      const seenPatientIds = new Set();
+      const activeQueue = [];
+
+      rawQueue.forEach((item) => {
+        const pid = String(item.patient_id || item.uhid || item.triage_id);
+        if (!seenPatientIds.has(pid)) {
+          seenPatientIds.add(pid);
+          activeQueue.push(item);
+        }
+      });
+
       if (badge) {
         badge.textContent = activeQueue.length;
         badge.style.display = activeQueue.length > 0 ? "inline-block" : "none";
@@ -124,9 +164,9 @@ const DoctorDesk = {
       if (activeQueue.length === 0) {
         listEl.innerHTML = `
           <div style="text-align: center; padding: 2rem; color: #64748b;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;"></div>
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🩺</div>
             <div style="font-weight: 700;">Queue is Clear</div>
-            <div style="font-size: 0.8rem;">No patients waiting in consultation queue.</div>
+            <div style="font-size: 0.8rem;">${this.showAllPatients ? 'No patients waiting in any consultation queue.' : 'No patients currently assigned to your queue.'}</div>
           </div>
         `;
         const banner = document.getElementById("doctor-active-patient-banner");
@@ -143,6 +183,12 @@ const DoctorDesk = {
         const isUrgent = item.triage_urgency === "critical" || item.triage_urgency === "urgent";
         const urgencyClass = item.triage_urgency === "critical" ? "badge-critical" : (item.triage_urgency === "urgent" ? "badge-urgent" : "badge-normal");
 
+        const doctorTag = item.doctor_name 
+          ? `<div style="font-size: 0.72rem; color: #166534; font-weight: 700; margin-top: 3px; display: flex; align-items: center; gap: 4px;">
+               <span>👨‍⚕️ To:</span> <span style="background: #ecfdf5; padding: 1px 6px; border-radius: 4px; border: 1px solid #bbf7d0;">${item.doctor_name}</span>
+             </div>` 
+          : `<div style="font-size: 0.72rem; color: #64748b; font-weight: 600; margin-top: 3px;">OPD General Intake</div>`;
+
         card.innerHTML = `
           <div class="queue-card-header">
             <span class="patient-name">${item.patient_name || 'Patient'}</span>
@@ -154,6 +200,7 @@ const DoctorDesk = {
           <div class="chief-complaint" style="font-size: 0.82rem; color: #334155; font-weight: 600;">
             ${item.chief_complaint || 'General clinical consultation'}
           </div>
+          ${doctorTag}
         `;
 
         card.addEventListener("click", () => {
@@ -163,8 +210,8 @@ const DoctorDesk = {
         listEl.appendChild(card);
       });
 
-      // Automatically select first patient if none selected
-      if (autoSelect && !this.currentTriage && activeQueue.length > 0) {
+      // Automatically select first patient if none selected or selected patient no longer in list
+      if (autoSelect && (!this.currentTriage || !activeQueue.some(x => x.triage_id === this.currentTriage.triage_id)) && activeQueue.length > 0) {
         this.selectPatientForConsultation(activeQueue[0]);
       }
     } catch (err) {

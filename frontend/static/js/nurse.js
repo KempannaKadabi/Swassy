@@ -73,9 +73,27 @@ const NurseDesk = {
         this.handleDocumentOCRUpload(e.target.files[0]);
       });
     }
+    this.loadDoctors();
+  },
+
+  async loadDoctors() {
+    try {
+      const res = await SwasyaApp.api('/api/auth/doctors');
+      const select = document.getElementById("vitals-doctor-select");
+      if (select && res && res.doctors && res.doctors.length > 0) {
+        select.innerHTML = res.doctors.map((d, i) => 
+          `<option value="${d.username}" data-id="${d.id}" data-name="${d.full_name}" ${i === 0 ? 'selected' : ''}>
+            👨‍⚕️ ${d.full_name} (${d.phc_center || 'OPD'})
+          </option>`
+        ).join('');
+      }
+    } catch(e) {
+      console.warn("Could not load doctors in nurse desk:", e);
+    }
   },
 
   async refresh() {
+    await this.loadDoctors();
     await this.loadQueue();
     await this.loadRecentPatients();
   },
@@ -85,17 +103,29 @@ const NurseDesk = {
       const data = await SwasyaApp.api("/api/triage/queue");
       const listEl = document.getElementById("nurse-queue-list");
       const badgeEl = document.getElementById("nurse-queue-badge");
-      if (badgeEl) badgeEl.textContent = data.waiting_for_doctor.length;
+
+      const rawWaiting = data.waiting_for_doctor || [];
+      const seenPids = new Set();
+      const waitingList = [];
+      rawWaiting.forEach(item => {
+        const pid = String(item.patient_id || item.uhid || item.triage_id);
+        if (!seenPids.has(pid)) {
+          seenPids.add(pid);
+          waitingList.push(item);
+        }
+      });
+
+      if (badgeEl) badgeEl.textContent = waitingList.length;
 
       if (!listEl) return;
       listEl.innerHTML = "";
 
-      if (data.waiting_for_doctor.length === 0) {
+      if (waitingList.length === 0) {
         listEl.innerHTML = `<div style="text-align: center; color: #64748b; padding: 2rem;">No patients currently in triage queue.</div>`;
         return;
       }
 
-      data.waiting_for_doctor.forEach(item => {
+      waitingList.forEach(item => {
         const card = document.createElement("div");
         card.className = `queue-item ${item.triage_urgency}`;
         card.innerHTML = `
@@ -244,6 +274,15 @@ const NurseDesk = {
       return;
     }
 
+    const docSelect = document.getElementById("vitals-doctor-select");
+    let docId = null, docUser = null, docName = null;
+    if (docSelect && docSelect.value) {
+      const opt = docSelect.options[docSelect.selectedIndex];
+      docUser = docSelect.value;
+      docId = opt.getAttribute("data-id") || docSelect.value;
+      docName = opt.getAttribute("data-name") || opt.text;
+    }
+
     try {
       const res = await SwasyaApp.api("/api/triage", "POST", {
         patient_id: this.selectedPatientId,
@@ -255,7 +294,10 @@ const NurseDesk = {
         blood_sugar: rbs,
         weight_kg: weight,
         height_cm: height,
-        chief_complaint: complaint
+        chief_complaint: complaint,
+        doctor_id: docId,
+        doctor_username: docUser,
+        doctor_name: docName
       });
 
       SwasyaApp.showToast(`Vitals Triaged! Priority: ${res.urgency.toUpperCase()}. Sent to Doctor Queue.`, "success");

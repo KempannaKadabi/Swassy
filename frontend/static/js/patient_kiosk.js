@@ -20,8 +20,12 @@ const PatientKiosk = {
     uhid: '',
     isReturning: false,
     previousVisits: [],
-    abhaNumber: ''
+    abhaNumber: '',
+    assignedDoctorId: '',
+    assignedDoctorUsername: '',
+    assignedDoctorName: ''
   },
+  registeredDoctors: [],
   anatomyVerified: false,
   chatMessages: [],
   interviewTurn: 0,
@@ -88,7 +92,67 @@ const PatientKiosk = {
     if (window.BodySkeleton) {
       BodySkeleton.init();
     }
+    this.loadRegisteredDoctors();
     this.renderStep();
+  },
+
+  async loadRegisteredDoctors() {
+    try {
+      const res = await SwasyaApp.api('/api/auth/doctors');
+      if (res && res.doctors && res.doctors.length > 0) {
+        this.registeredDoctors = res.doctors;
+        if (!this.patientData.assignedDoctorUsername) {
+          this.patientData.assignedDoctorId = this.registeredDoctors[0].id;
+          this.patientData.assignedDoctorUsername = this.registeredDoctors[0].username;
+          this.patientData.assignedDoctorName = this.registeredDoctors[0].full_name;
+        }
+        const docSelect = document.getElementById('kiosk-doctor-input');
+        if (docSelect) {
+          docSelect.innerHTML = this.renderDoctorOptions();
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load registered doctors:", e);
+    }
+  },
+
+  renderDoctorOptions(selectedUsername = null) {
+    const sel = selectedUsername || this.patientData.assignedDoctorUsername;
+    if (!this.registeredDoctors || this.registeredDoctors.length === 0) {
+      return `
+        <option value="dr_ramesh" data-id="dr_ramesh" data-name="Dr. Ramesh Kumar, MBBS, MD" selected>
+          Dr. Ramesh Kumar, MBBS, MD — PHC Civil Hospital OPD (Room 102)
+        </option>
+        <option value="dr_priya" data-id="dr_priya" data-name="Dr. Priya Sharma, MBBS, DCH">
+          Dr. Priya Sharma, MBBS, DCH — PHC Civil Hospital OPD (Room 103)
+        </option>
+      `;
+    }
+    return this.registeredDoctors.map((doc, idx) => {
+      const isSelected = sel ? (doc.username === sel) : (idx === 0);
+      return `<option value="${doc.username}" data-id="${doc.id}" data-name="${doc.full_name}" ${isSelected ? 'selected' : ''}>
+        👨‍⚕️ ${doc.full_name} (${doc.phc_center || 'OPD Room'})
+      </option>`;
+    }).join('');
+  },
+
+  onDoctorSelectionChange(selectEl) {
+    if (!selectEl) return;
+    const opt = selectEl.options[selectEl.selectedIndex];
+    this.patientData.assignedDoctorUsername = selectEl.value;
+    this.patientData.assignedDoctorId = opt.getAttribute("data-id") || selectEl.value;
+    this.patientData.assignedDoctorName = opt.getAttribute("data-name") || opt.text;
+  },
+
+  updateDoctorFromReview(selectEl) {
+    if (!selectEl) return;
+    const opt = selectEl.options[selectEl.selectedIndex];
+    this.patientData.assignedDoctorUsername = selectEl.value;
+    this.patientData.assignedDoctorId = opt.getAttribute("data-id") || selectEl.value;
+    this.patientData.assignedDoctorName = opt.getAttribute("data-name") || opt.text;
+    const textEl = document.getElementById("review-selected-doctor-text");
+    if (textEl) textEl.textContent = `👨‍⚕️ ${this.patientData.assignedDoctorName}`;
+    SwasyaApp.showToast(`Transmitting to ${this.patientData.assignedDoctorName}`, "info");
   },
 
   bindEvents() {
@@ -512,6 +576,19 @@ const PatientKiosk = {
                 <div class="form-group" style="margin-bottom: 0;">
                   <label class="form-label" style="color: #dc2626;">${_t('allergiesLabel', 'Known Drug Allergies (If Any)')}</label>
                   <input type="text" id="kiosk-allergies-input" class="form-input" placeholder="${_t('allergiesPlaceholder', 'e.g. Penicillin, Sulfa, Aspirin')}" value="${this.patientData.allergies}">
+                </div>
+              </div>
+
+              <!-- Attending Doctor Assignment -->
+              <div class="form-row" style="margin-bottom: 1.35rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-weight: 800; color: #1e293b;">Select Consulting Doctor *</span>
+                    <span style="font-size: 0.72rem; color: #166534; font-weight: 700; background: #dcfce7; padding: 2px 8px; border-radius: 999px;">Transmits Directly to this Doctor's Desk</span>
+                  </label>
+                  <select id="kiosk-doctor-input" class="form-select" style="font-weight: 700; color: #0f172a; border: 1.5px solid #059669; background: #f0fdf4; padding: 0.65rem 0.9rem;" onchange="PatientKiosk.onDoctorSelectionChange(this)">
+                    ${this.renderDoctorOptions()}
+                  </select>
                 </div>
               </div>
 
@@ -956,12 +1033,19 @@ const PatientKiosk = {
               <span>Computer-assisted draft — the attending physician performs the final clinical review before sign-off.</span>
             </div>
 
-            <p style="font-size: 0.88rem; color: #64748b; margin-bottom: 1rem;">
-              Review your synthesized clinical case summary. All interview responses, anatomical body diagram locations, photo detections, and past hospital files are consolidated for Doctor Room 102.
-            </p>
-
-            <div style="background: #0f172a; color: #66bb6a; font-family: 'JetBrains Mono', monospace; font-size: 0.84rem; padding: 1.5rem; border-radius: 14px; max-height: 420px; overflow-y: auto; white-space: pre-wrap; line-height: 1.65; margin-bottom: 1.5rem; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);">
-              ${this.finalReportText || 'Synthesizing report...'}
+            <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 12px; padding: 0.9rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+              <div>
+                <div style="font-size: 0.75rem; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 2px;">Assigned Attending Doctor Desk</div>
+                <div style="font-weight: 800; color: #065f46; font-size: 1.05rem;" id="review-selected-doctor-text">
+                  👨‍⚕️ ${this.patientData.assignedDoctorName || 'Dr. Ramesh Kumar, MBBS, MD'}
+                </div>
+              </div>
+              <div style="min-width: 250px;">
+                <label style="font-size: 0.72rem; font-weight: 700; color: #166534; display: block; margin-bottom: 4px;">Destination Doctor:</label>
+                <select id="review-doctor-select" class="form-select form-select-sm" style="font-size: 0.85rem; font-weight: 700; border: 1.5px solid #059669; background: #ffffff;" onchange="PatientKiosk.updateDoctorFromReview(this)">
+                  ${this.renderDoctorOptions(this.patientData.assignedDoctorUsername)}
+                </select>
+              </div>
             </div>
 
             <div style="display: flex; justify-content: space-between; gap: 1rem;">
@@ -1686,7 +1770,21 @@ const PatientKiosk = {
     }
   },
 
-  proceedWithExisting() {
+  async proceedWithExisting() {
+    try {
+      const checkinRes = await SwasyaApp.api('/api/triage/kiosk-checkin', 'POST', {
+        patient_id: this.patientData.id || 1,
+        chief_complaint: this.collectedComplaint || "Returning Patient — Intake in progress",
+        doctor_id: this.patientData.assignedDoctorId,
+        doctor_username: this.patientData.assignedDoctorUsername,
+        doctor_name: this.patientData.assignedDoctorName
+      });
+      if (checkinRes && checkinRes.triage_id) {
+        this.createdTriageId = checkinRes.triage_id;
+      }
+    } catch(queueErr) {
+      console.warn("Kiosk auto-queue notice:", queueErr);
+    }
     this.startInterview();
     this.goToStep('anatomy');
   },
@@ -1700,6 +1798,7 @@ const PatientKiosk = {
     const chronicInput = document.getElementById('kiosk-chronic-input');
     const allergyInput = document.getElementById('kiosk-allergies-input');
     const abhaInput = document.getElementById('kiosk-abha-input');
+    const docInput = document.getElementById('kiosk-doctor-input');
 
     if (!nameInput || !nameInput.value.trim()) {
       if (transitionToNext) alert("Please enter your full name.");
@@ -1714,6 +1813,13 @@ const PatientKiosk = {
     this.patientData.chronic_conditions = chronicInput ? chronicInput.value.trim() : '';
     this.patientData.allergies = allergyInput ? allergyInput.value.trim() : '';
     this.patientData.abhaNumber = abhaInput ? abhaInput.value.trim() : '';
+
+    if (docInput && docInput.value) {
+      const selectedOpt = docInput.options[docInput.selectedIndex];
+      this.patientData.assignedDoctorUsername = docInput.value;
+      this.patientData.assignedDoctorId = selectedOpt.getAttribute("data-id") || docInput.value;
+      this.patientData.assignedDoctorName = selectedOpt.getAttribute("data-name") || selectedOpt.text;
+    }
 
     try {
       const res = await SwasyaApp.api('/api/patients', 'POST', {
@@ -1739,7 +1845,10 @@ const PatientKiosk = {
     try {
       const checkinRes = await SwasyaApp.api('/api/triage/kiosk-checkin', 'POST', {
         patient_id: this.patientData.id || 1,
-        chief_complaint: this.collectedComplaint || "Registered at Kiosk — Intake in progress"
+        chief_complaint: this.collectedComplaint || "Registered at Kiosk — Intake in progress",
+        doctor_id: this.patientData.assignedDoctorId,
+        doctor_username: this.patientData.assignedDoctorUsername,
+        doctor_name: this.patientData.assignedDoctorName
       });
       if (checkinRes && checkinRes.triage_id) {
         this.createdTriageId = checkinRes.triage_id;
@@ -2089,7 +2198,10 @@ const PatientKiosk = {
       chat_messages: this.chatMessages,
       chief_complaint: this.collectedComplaint || (this.chatMessages[1] ? this.chatMessages[1].text : 'General consultation'),
       language: this.selectedLanguage,
-      uploaded_files: this.uploadedFiles
+      uploaded_files: this.uploadedFiles,
+      doctor_id: this.patientData.assignedDoctorId,
+      doctor_username: this.patientData.assignedDoctorUsername,
+      doctor_name: this.patientData.assignedDoctorName
     };
 
     try {
@@ -2110,9 +2222,20 @@ const PatientKiosk = {
     this.goToStep('review');
   },
 
-  submitFinalReportToDoctor() {
+  async submitFinalReportToDoctor() {
+    try {
+      await SwasyaApp.api('/api/triage/kiosk-checkin', 'POST', {
+        patient_id: this.patientData.id || 1,
+        chief_complaint: this.collectedComplaint || (this.chatMessages[1] ? this.chatMessages[1].text : 'General consultation'),
+        doctor_id: this.patientData.assignedDoctorId,
+        doctor_username: this.patientData.assignedDoctorUsername,
+        doctor_name: this.patientData.assignedDoctorName
+      });
+    } catch(e) {
+      console.warn("Kiosk sync notice on final submit:", e);
+    }
     this.goToStep('success');
-    if (window.DoctorDesk) {
+    if (window.DoctorDesk && typeof window.DoctorDesk.refresh === 'function') {
       DoctorDesk.refresh();
     }
   }
