@@ -270,11 +270,11 @@
           <span>Doctor Desk</span>
           <span class="badge badge-urgent" id="doctor-queue-badge" style="display: none; margin-left: 5px; font-size: 0.78rem; padding: 2px 7px;">0</span>
         </button>
-        <button type="button" class="portal-nav-btn" id="btn-rx-portal" onclick="PatientKiosk.openPrescriptionModal()" style="border: 1.5px solid #86efac; background: #f0fdf4; color: #166534; font-weight: 700;">
+        <button type="button" class="portal-nav-btn btn-rx-action" id="btn-rx-portal" onclick="PatientKiosk.openPrescriptionModal()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
           <span>View Prescription</span>
         </button>
-        <button type="button" class="portal-nav-btn" id="btn-start-fresh" onclick="SwasyaApp.resetSystemFresh()" title="Clear all data and start completely fresh" style="border: 1.5px solid #ef4444; background: #fef2f2; color: #dc2626; font-weight: 700;">
+        <button type="button" class="portal-nav-btn btn-danger-action" id="btn-start-fresh" onclick="SwasyaApp.resetSystemFresh()" title="Clear all data and start completely fresh">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
           <span>Start Fresh</span>
         </button>
@@ -351,7 +351,7 @@
             <p>Review the waiting queue, verify AI-generated clinical drafts, and finalize digital prescriptions with patient safety checks.</p>
           </div>
         </div>
-        <div class="dashboard-grid" style="grid-template-columns: 320px 1fr; gap: 1.25rem;">
+        <div class="dashboard-grid doctor-grid">
           <!-- Left: Patient Consultation Queue -->
           <div>
             <div class="card" style="border-radius: 12px;">
@@ -399,16 +399,16 @@
               <span style="font-size: 0.85rem; font-weight: 700; color: #334155;">Consultation Case Record</span>
               <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                 <button type="button" class="btn btn-primary btn-sm" onclick="DoctorDesk.downloadReportPdf()" style="font-weight: 700;">
-                  <span></span> Download Report (PDF)
+                  <span>📄</span> Download Report (PDF)
                 </button>
                 <button type="button" class="btn btn-sm btn-whatsapp" onclick="DoctorDesk.shareViaWhatsApp()" style="padding: 0.4rem 0.85rem; border-radius: 8px;">
-                  <span></span> Share on WhatsApp
+                  <span>💬</span> Share on WhatsApp
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="DoctorDesk.exportFhir()">
-                  <span></span> Export FHIR R4
+                  <span>⚡</span> Export FHIR R4
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm" style="color: #059669; border-color: #059669;" onclick="DoctorDesk.openAbdmLinkModal()">
-                  <span></span> Link ABDM / ABHA
+                  <span>🔗</span> Link ABDM / ABHA
                 </button>
               </div>
             </div>
@@ -542,7 +542,7 @@
                       <div style="font-weight: 700; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--slate-700);">
                         Add Medicine to Prescription
                       </div>
-                      <div class="form-row" style="grid-template-columns: 2fr 1fr 1fr 1fr 2fr auto; gap: 0.5rem;">
+                      <div class="form-row rx-med-row">
                         <div><input type="text" id="rx-med-name" class="form-input" placeholder="Medicine (e.g. Tab Aspirin)"></div>
                         <div><input type="text" id="rx-dosage" class="form-input" placeholder="Dosage (e.g. 300mg)"></div>
                         <div>
@@ -584,7 +584,7 @@
                       </table>
                     </div>
 
-                    <div class="form-row" style="grid-template-columns: 1.2fr 1fr 1fr; margin-bottom: 1rem; gap: 0.85rem;">
+                    <div class="form-row consult-followup-row" style="margin-bottom: 1rem;">
                       <div class="form-group">
                         <label class="form-label" style="font-weight: 700;">Lab Investigations Ordered:</label>
                         <textarea id="consult-lab-investigations" class="form-textarea" rows="2" placeholder="e.g. CBC with ESR, Stool Routine & FOBT, Fasting Blood Sugar, USG Abdomen"></textarea>
@@ -625,7 +625,7 @@
             <p>Register patients, capture vitals with digital scribing, and send cases to the doctor queue.</p>
           </div>
         </div>
-        <div class="dashboard-grid" style="grid-template-columns: 360px 1fr; gap: 1.25rem;">
+        <div class="dashboard-grid nurse-grid">
           <!-- Left: Registration & Patient Search -->
           <div>
             <!-- Quick Patient Search -->
@@ -723,7 +723,7 @@
               </div>
               <div class="card-body" style="padding: 1.25rem;">
                 <form id="triage-vitals-form">
-                  <div class="form-row" style="grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 0.75rem;">
+                  <div class="form-row vitals-4col">
                     <div class="form-group">
                       <label class="form-label">Systolic BP (mmHg)</label>
                       <input type="number" name="bp_systolic" class="form-input" placeholder="120">
@@ -742,7 +742,7 @@
                     </div>
                   </div>
 
-                  <div class="form-row" style="grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 0.75rem;">
+                  <div class="form-row vitals-4col">
                     <div class="form-group">
                       <label class="form-label">Temp (°F)</label>
                       <input type="number" step="0.1" name="temperature" class="form-input" placeholder="98.6">
@@ -849,7 +849,7 @@
         </div>
 
         <!-- KPI Grid -->
-        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 1rem; margin-bottom: 1.25rem;">
+        <div class="kpi-grid">
           <div class="card" style="padding: 1rem; border-radius: 12px; text-align: center; border-top: 3px solid #2e7d32;">
             <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Registered Patients</div>
             <div id="kpi-total-patients" style="font-size: 1.8rem; font-weight: 900; color: #0f172a; margin-top: 0.25rem;">--</div>
@@ -877,7 +877,7 @@
         </div>
 
         <!-- Charts / Analytics Breakdown -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
+        <div class="analytics-charts-grid">
           <!-- Urgency Breakdown -->
           <div class="card" style="border-radius: 12px;">
             <div class="card-header" style="background: #f8fafc; border-top-left-radius: 12px; border-top-right-radius: 12px;">
@@ -938,7 +938,7 @@
             <p>Geospatial case clusters, syndromic counts, and early-warning alerts across the district.</p>
           </div>
         </div>
-        <div class="dashboard-grid" style="grid-template-columns: 1fr 340px; gap: 1.25rem;">
+        <div class="dashboard-grid map-grid">
           <!-- Left: Canvas Geospatial Radar & Clusters Table -->
           <div>
             <!-- Map Controls & Filters -->

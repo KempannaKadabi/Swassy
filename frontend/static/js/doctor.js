@@ -280,19 +280,19 @@ const DoctorDesk = {
 
         <div style="display: flex; gap: 0.65rem; flex-wrap: wrap; background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.85rem 1rem; border-radius: 12px; margin-top: 0.85rem; font-size: 0.82rem;">
           <div style="background: #ffffff; padding: 4px 10px; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 5px;">
-            <span></span> <strong>BP:</strong> <span style="color: #2e7d32; font-weight: 700;">${queueItem.bp_systolic || '128'}/${queueItem.bp_diastolic || '82'}</span> <span style="color: #64748b;">mmHg</span>
+            <span>🩺</span> <strong>BP:</strong> <span style="color: #2e7d32; font-weight: 700;">${queueItem.bp_systolic || '128'}/${queueItem.bp_diastolic || '82'}</span> <span style="color: #64748b;">mmHg</span>
           </div>
           <div style="background: #ffffff; padding: 4px 10px; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 5px;">
-            <span></span> <strong>Pulse:</strong> <span style="color: #2e7d32; font-weight: 700;">${queueItem.heart_rate || '80'}</span> <span style="color: #64748b;">bpm</span>
+            <span>💓</span> <strong>Pulse:</strong> <span style="color: #2e7d32; font-weight: 700;">${queueItem.heart_rate || '80'}</span> <span style="color: #64748b;">bpm</span>
           </div>
           <div style="background: #ffffff; padding: 4px 10px; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 5px;">
-            <span></span> <strong>SpO2:</strong> <span style="color: #059669; font-weight: 700;">${queueItem.spo2 || '98'}%</span>
+            <span>🫁</span> <strong>SpO2:</strong> <span style="color: #059669; font-weight: 700;">${queueItem.spo2 || '98'}%</span>
           </div>
           <div style="background: #ffffff; padding: 4px 10px; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 5px;">
-            <span></span> <strong>Temp:</strong> <span style="color: #d97706; font-weight: 700;">${queueItem.temperature || '98.6'}°F</span>
+            <span>🌡️</span> <strong>Temp:</strong> <span style="color: #d97706; font-weight: 700;">${queueItem.temperature || '98.6'}°F</span>
           </div>
           <div style="background: #ffffff; padding: 4px 10px; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 5px;">
-            <span></span> <strong>Blood Sugar:</strong> <span style="color: #2e7d32; font-weight: 700;">${queueItem.blood_sugar || '110'}</span> <span style="color: #64748b;">mg/dL</span>
+            <span>🩸</span> <strong>Blood Sugar:</strong> <span style="color: #2e7d32; font-weight: 700;">${queueItem.blood_sugar || '110'}</span> <span style="color: #64748b;">mg/dL</span>
           </div>
         </div>
       `;
